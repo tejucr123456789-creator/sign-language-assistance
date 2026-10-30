@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Assistive Sign Language Translator</title>
+  <title>Interactive Finger Counter & Sign App</title>
   <!-- MediaPipe Hands & Camera Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -52,8 +52,8 @@
       max-width: 600px;
     }
 
-    #translation-text {
-      font-size: 1.8rem;
+    #number-output {
+      font-size: 3rem;
       font-weight: bold;
       color: #7ee787;
       margin: 5px 0;
@@ -75,7 +75,7 @@
 </head>
 <body>
 
-  <h1>Assistive Sign Language Communication Aid</h1>
+  <h1>Interactive Finger Counting & Sign Aid</h1>
   <div id="status">Loading AI Hand-Tracking Model...</div>
 
   <div class="main-container">
@@ -85,9 +85,9 @@
     </div>
 
     <div class="output-box">
-      <p style="margin:0; font-size: 0.9rem; color:#a5c4d4;">TRANSLATED TEXT OUTPUT:</p>
-      <div id="translation-text">AWAITING GESTURE...</div>
-      <button class="btn" onclick="speakText()">🔊 Speak Aloud</button>
+      <p style="margin:0; font-size: 0.9rem; color:#a5c4d4;">ACTIVE NUMBER / GESTURE:</p>
+      <div id="number-output">WAITING FOR HAND...</div>
+      <button class="btn" onclick="speakNumber()">🔊 Speak Aloud</button>
     </div>
   </div>
 
@@ -95,59 +95,83 @@
     const videoElement = document.getElementById('webcam');
     const canvasElement = document.getElementById('output_canvas');
     const canvasCtx = canvasElement.getContext('2d');
-    const translationText = document.getElementById('translation-text');
+    const numberOutput = document.getElementById('number-output');
     const statusText = document.getElementById('status');
 
-    let lastSpokenWord = "";
+    function countFingers(landmarks) {
+      // Landmark indices for finger tips and lower joints (PIP)
+      // Thumb: tip 4, ip 3, mcp 2
+      // Index: tip 8, pip 6
+      // Middle: tip 12, pip 10
+      // Ring: tip 16, pip 14
+      // Pinky: tip 20, pip 18
 
-    function recognizeSign(landmarks) {
-      // Basic rule-based heuristic mapping using fingertip positions relative to knuckles
-      const thumbTip = landmarks[4], thumbIp = landmarks[3];
-      const indexTip = landmarks[8], indexPip = landmarks[6];
-      const middleTip = landmarks[12], middlePip = landmarks[10];
-      const ringTip = landmarks[16], ringPip = landmarks[14];
-      const pinkyTip = landmarks[20], pinkyPip = landmarks[18];
+      let fingersUp = 0;
 
-      const isIndexUp = indexTip.y < indexPip.y;
-      const isMiddleUp = middleTip.y < middlePip.y;
-      const isRingUp = ringTip.y < ringPip.y;
-      const isPinkyUp = pinkyTip.y < pinkyPip.y;
-
-      // Simple gesture definitions for demonstration
-      if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) {
-        return "HELLO / PEACE";
-      } else if (isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) {
-        return "YES / POINTING";
-      } else if (isIndexUp && isMiddleUp && isRingUp && isPinkyUp) {
-        return "STOP / HELP";
-      } else if (!isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) {
-        return "THANK YOU";
+      // 1. Thumb Check (Comparing x-coordinate based on hand orientation assumption or tip vs joint distance)
+      // For a mirrored webcam view facing you:
+      // Right hand thumb tip (4) is to the left of IP joint (3)
+      if (landmarks[4].x < landmarks[3].x) {
+        fingersUp++;
       }
-      return "PROCESSING SIGN...";
+
+      // 2. Index Finger
+      if (landmarks[8].y < landmarks[6].y) {
+        fingersUp++;
+      }
+
+      // 3. Middle Finger
+      if (landmarks[12].y < landmarks[10].y) {
+        fingersUp++;
+      }
+
+      // 4. Ring Finger
+      if (landmarks[16].y < landmarks[14].y) {
+        fingersUp++;
+      }
+
+      // 5. Pinky Finger
+      if (landmarks[20].y < landmarks[18].y) {
+        fingersUp++;
+      }
+
+      return fingersUp;
     }
 
     function onResults(results) {
-      statusText.innerText = "System Active — Show sign in front of camera";
+      statusText.innerText = "System Active — Raise your fingers!";
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-      if (results.multiHandLandmarks) {
-        for (const landmarks of results.multiHandLandmarks) {
-          // Draw hand skeleton links
-          for (const point of landmarks) {
-            const x = point.x * canvasElement.width;
-            const y = point.y * canvasElement.height;
-            canvasCtx.beginPath();
-            canvasCtx.arc(x, y, 4, 0, 2 * Math.PI);
-            canvasCtx.fillStyle = '#00f2fe';
-            canvasCtx.fill();
-          }
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
 
-          const word = recognizeSign(landmarks);
-          translationText.innerText = word;
+        // Draw hand landmarks on canvas
+        for (const point of landmarks) {
+          const x = point.x * canvasElement.width;
+          const y = point.y * canvasElement.height;
+          canvasCtx.beginPath();
+          canvasCtx.arc(x, y, 4, 0, 2 * Math.PI);
+          canvasCtx.fillStyle = '#00f2fe';
+          canvasCtx.fill();
         }
+
+        // Count active raised fingers
+        const count = countFingers(landmarks);
+        
+        // Display numbers with custom phrases
+        const labels = [
+          "0 (ZERO / FIST)",
+          "1 (ONE FINGER)",
+          "2 (TWO FINGERS - PEACE)",
+          "3 (THREE FINGERS)",
+          "4 (FOUR FINGERS)",
+          "5 (FIVE FINGERS - OPEN PALM)"
+        ];
+
+        numberOutput.innerText = labels[count] || `${count} FINGERS`;
       } else {
-        translationText.innerText = "NO HAND DETECTED";
+        numberOutput.innerText = "NO HAND DETECTED";
       }
       canvasCtx.restore();
     }
@@ -175,9 +199,9 @@
 
     camera.start();
 
-    function speakText() {
-      const textToSpeak = translationText.innerText;
-      if ('speechSynthesis' in window && textToSpeak !== "NO HAND DETECTED" && textToSpeak !== "AWAITING GESTURE...") {
+    function speakNumber() {
+      const textToSpeak = numberOutput.innerText;
+      if ('speechSynthesis' in window && !textToSpeak.includes("WAITING") && !textToSpeak.includes("NO HAND")) {
         const utterance = new SpeechSynthesisUtterance(textToSpeak);
         window.speechSynthesis.speak(utterance);
       }
