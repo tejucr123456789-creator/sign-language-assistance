@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assistive Sign Language Translator</title>
+  <!-- MediaPipe Hands & Camera Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <style>
+    body {
+      background-color: #0b132b;
+      color: #00f2fe;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 { margin-top: 10px; color: #ffffff; font-size: 1.8rem; }
+    #status { font-size: 1rem; color: #ff007f; margin-bottom: 15px; }
+    
+    .main-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .video-container {
+      position: relative;
+      border: 4px solid #1c2541;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 25px rgba(0, 242, 254, 0.2);
+    }
+    video, canvas {
+      transform: scaleX(-1); /* Mirror view */
+      display: block;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .output-box {
+      background-color: #1c2541;
+      border: 2px solid #00f2fe;
+      border-radius: 10px;
+      padding: 15px 25px;
+      width: 80%;
+      max-width: 600px;
+    }
+
+    #translation-text {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #7ee787;
+      margin: 5px 0;
+    }
+
+    .btn {
+      background-color: #00f2fe;
+      color: #0b132b;
+      border: none;
+      padding: 10px 20px;
+      font-size: 1rem;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .btn:hover { background-color: #48cae4; }
+  </style>
+</head>
+<body>
+
+  <h1>Assistive Sign Language Communication Aid</h1>
+  <div id="status">Loading AI Hand-Tracking Model...</div>
+
+  <div class="main-container">
+    <div class="video-container">
+      <video id="webcam" width="480" height="360" autoplay playsinline></video>
+      <canvas id="output_canvas" width="480" height="360"></canvas>
+    </div>
+
+    <div class="output-box">
+      <p style="margin:0; font-size: 0.9rem; color:#a5c4d4;">TRANSLATED TEXT OUTPUT:</p>
+      <div id="translation-text">AWAITING GESTURE...</div>
+      <button class="btn" onclick="speakText()">🔊 Speak Aloud</button>
+    </div>
+  </div>
+
+  <script>
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const translationText = document.getElementById('translation-text');
+    const statusText = document.getElementById('status');
+
+    let lastSpokenWord = "";
+
+    function recognizeSign(landmarks) {
+      // Basic rule-based heuristic mapping using fingertip positions relative to knuckles
+      const thumbTip = landmarks[4], thumbIp = landmarks[3];
+      const indexTip = landmarks[8], indexPip = landmarks[6];
+      const middleTip = landmarks[12], middlePip = landmarks[10];
+      const ringTip = landmarks[16], ringPip = landmarks[14];
+      const pinkyTip = landmarks[20], pinkyPip = landmarks[18];
+
+      const isIndexUp = indexTip.y < indexPip.y;
+      const isMiddleUp = middleTip.y < middlePip.y;
+      const isRingUp = ringTip.y < ringPip.y;
+      const isPinkyUp = pinkyTip.y < pinkyPip.y;
+
+      // Simple gesture definitions for demonstration
+      if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) {
+        return "HELLO / PEACE";
+      } else if (isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) {
+        return "YES / POINTING";
+      } else if (isIndexUp && isMiddleUp && isRingUp && isPinkyUp) {
+        return "STOP / HELP";
+      } else if (!isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) {
+        return "THANK YOU";
+      }
+      return "PROCESSING SIGN...";
+    }
+
+    function onResults(results) {
+      statusText.innerText = "System Active — Show sign in front of camera";
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+      if (results.multiHandLandmarks) {
+        for (const landmarks of results.multiHandLandmarks) {
+          // Draw hand skeleton links
+          for (const point of landmarks) {
+            const x = point.x * canvasElement.width;
+            const y = point.y * canvasElement.height;
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, 4, 0, 2 * Math.PI);
+            canvasCtx.fillStyle = '#00f2fe';
+            canvasCtx.fill();
+          }
+
+          const word = recognizeSign(landmarks);
+          translationText.innerText = word;
+        }
+      } else {
+        translationText.innerText = "NO HAND DETECTED";
+      }
+      canvasCtx.restore();
+    }
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
+
+    hands.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await hands.send({ image: videoElement });
+      },
+      width: 480,
+      height: 360
+    });
+
+    camera.start();
+
+    function speakText() {
+      const textToSpeak = translationText.innerText;
+      if ('speechSynthesis' in window && textToSpeak !== "NO HAND DETECTED" && textToSpeak !== "AWAITING GESTURE...") {
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+  </script>
+</body>
+</html>
